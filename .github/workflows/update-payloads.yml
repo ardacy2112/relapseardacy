@@ -61,7 +61,7 @@ jobs:
               print(f"No ELF assets found in release {tag}.")
               raise SystemExit(0)
 
-          base = pathlib.Path("payloads") / tag
+          base = pathlib.Path("payloads")
           base.mkdir(parents=True, exist_ok=True)
 
           for asset in assets:
