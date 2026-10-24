@@ -269,6 +269,7 @@ async function main(userlandRW) {
   if (result.payloads) {
     log("kernel exploit complete", "info");
     log("elfldr is listening on port 9021", "info");
+    log("Now play has no limits", "info");
   } else {
     log("kernel chain complete: root and sandbox escape are active", "info");
   }
