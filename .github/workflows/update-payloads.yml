@@ -1,0 +1,97 @@
+
+name: Update Payload Manager ELF
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: payload-manager-updater
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Download new release ELF assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import urllib.request
+
+          repo = "itsPLK/ps5-payload-manager"
+          api = f"https://api.github.com/repos/{repo}/releases/latest"
+
+          request = urllib.request.Request(
+              api,
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "User-Agent": "payload-release-sync"
+              }
+          )
+
+          with urllib.request.urlopen(request, timeout=30) as response:
+              release = json.load(response)
+
+          if release.get("draft") or release.get("prerelease"):
+              raise SystemExit("Latest release is not a stable release.")
+
+          tag = release["tag_name"]
+          assets = [
+              asset for asset in release.get("assets", [])
+              if asset["name"].lower().endswith(".elf")
+          ]
+
+          if not assets:
+              print(f"No ELF assets found in release {tag}.")
+              raise SystemExit(0)
+
+          base = pathlib.Path("payloads") / tag
+          base.mkdir(parents=True, exist_ok=True)
+
+          for asset in assets:
+              name = pathlib.Path(asset["name"]).name
+              destination = base / name
+
+              download = urllib.request.Request(
+                  asset["browser_download_url"],
+                  headers={"User-Agent": "payload-release-sync"}
+              )
+
+              with urllib.request.urlopen(download, timeout=120) as response:
+                  data = response.read()
+
+              if not data:
+                  raise RuntimeError(f"Empty ELF asset: {name}")
+
+              destination.write_bytes(data)
+              print(f"Downloaded {tag}/{name} ({len(data)} bytes)")
+          PY
+
+      - name: Commit new files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add payloads/
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Payload Manager release assets"
+            git push
+          else
+            echo "No new changes."
+          fi
+          
